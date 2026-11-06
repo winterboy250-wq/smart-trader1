@@ -1,21 +1,21 @@
 {
-    "brand_name": "YourBrand",
-    "brand_domain": "yourbrand.com",
+    "brand_name": "Smart Trader Analysing Tool",
+    "brand_domain": "smart-trader1.netlify.app",
     "brand_hostname": {
         "staging": "staging.yourbrand.com/dashboard",
         "production": "yourbrand.com/dashboard"
     },
-    "domain_name": "YourBrand.com",
+    "domain_name": "smart-trader1.netlify.app",
     "colors": {
-        "primary": "#085add",
-        "secondary": "#64748b",
-        "tertiary": "#8b5cf6",
+        "primary": "#13B8C8",
+        "secondary": "#94A3B8",
+        "tertiary": "#8B5CF6",
         "success": "#10b981",
         "danger": "#ef4444",
         "warning": "#f59e0b",
         "info": "#0ea5e9",
         "neutral": "#6b7280",
-        "black": "#0f172a",
+        "black": "#07111F",
         "white": "#ffffff",
         "grey": {
             "50": "#f8fafc",
@@ -26,8 +26,8 @@
             "500": "#64748b",
             "600": "#475569",
             "700": "#334155",
-            "800": "#1e293b",
-            "900": "#0f172a"
+            "800": "#0D1B2A",
+            "900": "#07111F"
         }
     },
     "typography": {
@@ -79,17 +79,17 @@
         "css_variable_prefix": "--brand"
     },
     "platform": {
-        "name": "smart trader",
+        "name": "Smart Trader Analysing Tool",
         "footer": {
             "enable_language_settings": false,
             "enable_theme_toggle": true
         },
         "hostname": {
             "production": {
-                "com": "bot.yourbrand.com"
+                "com": "smart-trader1.netlify.app"
             },
             "staging": {
-                "com": "staging-bot.yourbrand.com"
+                "com": "staging-smart-trader1.netlify.app"
             }
         },
         "auth2_url": {

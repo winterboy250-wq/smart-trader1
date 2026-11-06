@@ -117,3 +117,40 @@ not Next.js config:
 
 When assembled by the App Builder, these are configured for you (logo upload, color,
 font, and app name are injected at deploy time).
+
+## Deploy to Netlify (Smart Trader Analysing Tool)
+
+This project uses Rsbuild, not Vite or Next.js. Configure the Netlify site as follows:
+
+- **Build command:** `npm run build`
+- **Publish directory:** `dist`
+- **Node version:** `22` (also set by `netlify.toml`)
+- **Base directory:** leave blank when the repository root contains `package.json`.
+
+The included `netlify.toml` provides the build settings and a React Router SPA fallback.
+
+### Netlify environment variables
+
+In **Site configuration → Environment variables**, set the public Deriv application
+configuration used by the frontend, then trigger a fresh deploy:
+
+- `NEXT_PUBLIC_DERIV_APP_ID` — your registered Deriv application ID (public identifier, not an API token).
+- `NEXT_PUBLIC_DERIV_ENV` — `production` for live Deriv endpoints, or `staging` for staging.
+- `NEXT_PUBLIC_DERIV_APP_NAME` — `Smart Trader Analysing Tool`.
+- `NEXT_PUBLIC_DERIV_REFERRAL_LINK` — optional referral URL.
+
+Do not add Deriv personal API tokens, OAuth access/refresh tokens, passwords, or private
+keys as `NEXT_PUBLIC_*` variables. Anything with that prefix is bundled into browser code.
+
+### Deriv OAuth and trading safety
+
+The current app's vendored OAuth flow uses PKCE, but its token exchange and token storage
+are currently performed in the browser. This is not equivalent to server-side token
+storage. Before enabling unattended real-money bot execution, move OAuth callback/token
+handling into a trusted server-side session service, use secure HttpOnly cookies, validate
+state and PKCE on the server, and add server-enforced stake/loss/trade limits. Netlify's
+static hosting alone does not provide persistent secure sessions; use Netlify Functions
+plus a suitable persistent session store, or a separate backend service.
+
+Test all connection and execution changes on a Deriv demo account first. Never commit
+`.env` files containing credentials or API tokens.
