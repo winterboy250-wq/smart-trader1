@@ -12,6 +12,8 @@ import { TAccountSwitcher } from './common/types';
 import AccountInfoWrapper from './account-info-wrapper';
 import './account-switcher.scss';
 
+const formatLoginId = (loginid: string) => (loginid.length > 4 ? `${loginid.slice(0, 4)}...` : loginid);
+
 const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
@@ -67,7 +69,7 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
 
     if (!activeAccount) return null;
 
-    const { currency, isVirtual, balance } = activeAccount;
+    const { currency, isVirtual, balance, loginid } = activeAccount;
     const showChevron = !isSingleAccount && !is_bot_running;
 
     return (
@@ -100,7 +102,8 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
                                     <Localize i18n_default_text='Demo account' />
                                 ) : (
                                     <Localize i18n_default_text='Real account' />
-                                )}
+                                )}{' '}
+                                — {formatLoginId(loginid)}
                             </Text>
                             {showChevron && (
                                 <span
@@ -169,7 +172,8 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
                                     <Localize i18n_default_text='Demo account' />
                                 ) : (
                                     <Localize i18n_default_text='Real account' />
-                                )}
+                                )}{' '}
+                                — {formatLoginId(account.loginid)}
                             </Text>
                             <Text size='xs' weight='bold' className='acc-dropdown__balance'>
                                 {account.currency ? (
