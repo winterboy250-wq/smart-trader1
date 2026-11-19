@@ -102,8 +102,8 @@ export const getDebugServiceWorker = () => {
  */
 export const generateOAuthURL = async (prompt?: string): Promise<string> => {
     try {
-        const clientId = process.env.NEXT_PUBLIC_DERIV_APP_ID;
-        if (!clientId) return '';
+        // The client ID is read by the secure backend from DERIV_CLIENT_ID.
+        // Do not require a browser-exposed NEXT_PUBLIC variable here.
 
         const config: Record<string, string> = {
             redirectUri: window.location.origin,
