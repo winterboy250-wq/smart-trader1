@@ -1,12 +1,8 @@
 import {
-    buildAuthorizationUrl,
-    buildSignUpUrl,
-    getAuthInfo,
     parseReferralLink,
     parseLandingParams,
     resolveReferralViaProxy,
 } from '@/external/deriv-core';
-import type { AuthConfig } from '@/external/deriv-core';
 import { DerivWSAccountsService } from '@/services/derivws-accounts.service';
 import brandConfig from '../../../../../brand.config.json';
 
@@ -65,20 +61,27 @@ const getDefaultServerURL = () => {
 
 /**
  * Gets the WebSocket URL using the authenticated flow
- * 1. Get access token from auth_info (localStorage via vendored deriv-core)
- * 2. Fetch OTP WebSocket URL from DerivWSAccountsService
+ * 1. Ask the secure backend to issue an OTP using the HttpOnly session cookie
+ * 2. Return the account-scoped WebSocket URL without exposing Deriv tokens
  *
  * @returns Promise with WebSocket URL or fallback to default server
  */
 export const getSocketURL = async (): Promise<string> => {
     try {
-        const authInfo = getAuthInfo();
-        if (!authInfo || !authInfo.access_token) {
-            return getDefaultServerURL();
-        }
+        const accountId = localStorage.getItem('active_loginid');
+        if (!accountId) return getDefaultServerURL();
 
-        const wsUrl = await DerivWSAccountsService.getAuthenticatedWebSocketURL(authInfo.access_token);
-        return wsUrl;
+        const response = await fetch('/api/deriv/session', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'otp', accountId }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.websocketUrl) {
+            throw new Error(result.error || 'Could not create authenticated Deriv WebSocket session');
+        }
+        return result.websocketUrl;
     } catch (error) {
         console.error('[DerivWS] Error in getSocketURL:', error);
         return getDefaultServerURL();
@@ -103,8 +106,7 @@ export const generateOAuthURL = async (prompt?: string): Promise<string> => {
         const clientId = process.env.NEXT_PUBLIC_DERIV_APP_ID;
         if (!clientId) return '';
 
-        const config: AuthConfig = {
-            clientId,
+        const config: Record<string, string> = {
             redirectUri: window.location.origin,
             scopes: 'trade',
         };
@@ -114,11 +116,10 @@ export const generateOAuthURL = async (prompt?: string): Promise<string> => {
         if (referralLink) {
             const referral = parseReferralLink(referralLink);
             if (referral) {
-                config.affiliateToken = referral.affiliateToken;
-                config.affiliateTokenParam = referral.affiliateTokenParam;
-                config.utmCampaign = referral.utmCampaign;
-                if (referral.utmSource) config.utmSource = referral.utmSource;
-                if (referral.utmMedium) config.utmMedium = referral.utmMedium;
+                config[referral.affiliateTokenParam || 't'] = referral.affiliateToken;
+                if (referral.utmCampaign) config.utm_campaign = referral.utmCampaign;
+                if (referral.utmSource) config.utm_source = referral.utmSource;
+                if (referral.utmMedium) config.utm_medium = referral.utmMedium;
             }
         }
 
@@ -130,12 +131,11 @@ export const generateOAuthURL = async (prompt?: string): Promise<string> => {
             // unguarded write would clobber a valid env token with '' on generic
             // marketing links (e.g. ?utm_source=google with no t=).
             if (landing.affiliateToken) {
-                config.affiliateToken = landing.affiliateToken;
-                config.affiliateTokenParam = landing.affiliateTokenParam;
+                config[landing.affiliateTokenParam || 't'] = landing.affiliateToken;
             }
-            if (landing.utmSource) config.utmSource = landing.utmSource;
-            if (landing.utmMedium) config.utmMedium = landing.utmMedium;
-            if (landing.utmCampaign) config.utmCampaign = landing.utmCampaign;
+            if (landing.utmSource) config.utm_source = landing.utmSource;
+            if (landing.utmMedium) config.utm_medium = landing.utmMedium;
+            if (landing.utmCampaign) config.utm_campaign = landing.utmCampaign;
         }
 
         // If we still have no token and the referral link is a Scaleo click link,
@@ -143,18 +143,24 @@ export const generateOAuthURL = async (prompt?: string): Promise<string> => {
         if (!config.affiliateToken && referralLink) {
             const resolved = await resolveReferralViaProxy(referralLink);
             if (resolved) {
-                config.affiliateToken = resolved.affiliateToken;
-                config.affiliateTokenParam = resolved.affiliateTokenParam;
-                if (resolved.utmSource) config.utmSource = resolved.utmSource;
-                if (resolved.utmMedium) config.utmMedium = resolved.utmMedium;
-                if (resolved.utmCampaign) config.utmCampaign = resolved.utmCampaign;
+                config[resolved.affiliateTokenParam || 't'] = resolved.affiliateToken;
+                if (resolved.utmSource) config.utm_source = resolved.utmSource;
+                if (resolved.utmMedium) config.utm_medium = resolved.utmMedium;
+                if (resolved.utmCampaign) config.utm_campaign = resolved.utmCampaign;
             }
         }
 
-        if (prompt === 'registration') {
-            return await buildSignUpUrl(config);
+        const response = await fetch('/api/deriv/oauth/start', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...config, prompt: prompt === 'registration' ? 'registration' : undefined }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.authorizationUrl) {
+            throw new Error(result.error || 'Could not start secure Deriv authorization.');
         }
-        return await buildAuthorizationUrl(config);
+        return result.authorizationUrl;
     } catch (error) {
         console.error('Error generating OAuth URL:', error);
         return '';
