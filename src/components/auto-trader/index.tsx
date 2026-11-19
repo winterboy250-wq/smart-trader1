@@ -28,6 +28,7 @@ export default function AutoTrader() {
     const pending = useRef(false);
     const runningRef = useRef(false);
     const contractId = useRef<number | null>(null);
+    const connectedAccountId = useRef<string | null>(null);
     const previousSpread = useRef<number | null>(null);
     const stopRequested = useRef(false);
     const lastTradeAt = useRef(0);
@@ -108,6 +109,7 @@ export default function AutoTrader() {
             const ws = new WebSocket(data.websocketUrl);
             socket.current = ws;
             ws.onopen = () => {
+                connectedAccountId.current = accountId;
                 setConnected(true); setStatus('Connected — waiting for live prices');
                 send({ balance: 1, subscribe: 1 });
                 send({ ticks_history: configRef.current.symbol, count: 100, end: 'latest', style: 'ticks' });
@@ -191,8 +193,8 @@ export default function AutoTrader() {
                     }
                 }
             };
-            ws.onerror = () => { setConnected(false); stopBot('Connection error'); setError('Deriv WebSocket connection failed.'); };
-            ws.onclose = () => { setConnected(false); stopBot('Disconnected from Deriv'); };
+            ws.onerror = () => { connectedAccountId.current = null; setConnected(false); stopBot('Connection error'); setError('Deriv WebSocket connection failed.'); };
+            ws.onclose = () => { connectedAccountId.current = null; setConnected(false); stopBot('Disconnected from Deriv'); };
         } catch (e) { setStatus('Connection failed'); setError((e as Error).message); }
     };
 
@@ -200,6 +202,7 @@ export default function AutoTrader() {
         const account = accounts.find(item => item.account_id === accountId);
         const isDemo = account?.account_type?.toLowerCase() === 'demo' || /^(VRT|VRTC)/.test(accountId);
         if (!connected) { setError('Connect to Deriv before starting.'); return; }
+        if (connectedAccountId.current !== accountId) { setError('The selected account is not the account currently connected. Disconnect and reconnect to the correct account.'); return; }
         if (!isDemo) { setError('Automated execution is currently restricted to demo accounts while this feature is being tested.'); return; }
         if (!confirmed) { setError('Confirm that you understand this bot can place demo trades automatically.'); return; }
         if (contractId.current || pending.current) { setError('Wait for the previous trade request or open contract to finish before restarting.'); return; }
@@ -212,7 +215,7 @@ export default function AutoTrader() {
         runningRef.current = true; setRunning(true); setStatus('Bot active — analysing live ticks');
     };
 
-    const disconnect = () => { stopBot('Disconnected by user'); socket.current?.close(); socket.current = null; setConnected(false); };
+    const disconnect = () => { stopBot('Disconnected by user'); connectedAccountId.current = null; socket.current?.close(); socket.current = null; setConnected(false); };
 
     return (
         <main className="auto-trader">
@@ -232,7 +235,7 @@ export default function AutoTrader() {
             <div className="auto-trader__columns">
                 <section className="auto-trader__panel">
                     <h2>Connection & market</h2>
-                    <label>Deriv account<select value={accountId} onChange={e => setAccountId(e.target.value)}>
+                    <label>Deriv account<select value={accountId} onChange={e => setAccountId(e.target.value)} disabled={connected}>
                         <option value="">Select account</option>{accounts.map(account => <option key={account.account_id} value={account.account_id}>{account.account_id} · {account.account_type || 'Account'} · {account.currency}</option>)}
                     </select></label>
                     <label>Market symbol<input value={config.symbol} onChange={e => setConfig({ ...config, symbol: e.target.value.toUpperCase() })} disabled={connected} /></label>
