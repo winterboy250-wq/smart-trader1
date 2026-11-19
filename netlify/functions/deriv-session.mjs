@@ -1,4 +1,4 @@
-import { createDecipheriv, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { MongoClient } from "mongodb";
 
 const COOKIE_NAME = "st_oauth_session";
@@ -28,6 +28,41 @@ function decryptToken(encrypted) {
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "base64"));
   decipher.setAuthTag(Buffer.from(encrypted.tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(encrypted.ciphertext, "base64")), decipher.final()]).toString("utf8");
+}
+function encryptToken(token) {
+  const key = createHash("sha256").update(process.env.SESSION_SECRET).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  return { ciphertext: encrypted.toString("base64"), iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
+}
+async function getUsableAccessToken(database, session) {
+  if (session.tokenExpiresAt && session.tokenExpiresAt.getTime() > Date.now() + 60000) {
+    return decryptToken(session.token);
+  }
+  if (!session.refreshToken) throw new Error("Deriv session expired. Reconnect Deriv.");
+  const refreshToken = decryptToken(session.refreshToken);
+  const authBase = process.env.NEXT_PUBLIC_DERIV_ENV === "preview" || process.env.NEXT_PUBLIC_DERIV_ENV === "staging"
+    ? "https://staging-auth.deriv.com/oauth2" : "https://auth.deriv.com/oauth2";
+  const refreshResponse = await fetch(`${authBase}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: process.env.DERIV_CLIENT_ID || process.env.NEXT_PUBLIC_DERIV_APP_ID || "",
+    }).toString(),
+  });
+  if (!refreshResponse.ok) throw new Error("Deriv token refresh failed. Reconnect Deriv.");
+  const refreshed = await refreshResponse.json();
+  if (!refreshed.access_token) throw new Error("Deriv did not return a refreshed access token.");
+  const update = {
+    token: encryptToken(refreshed.access_token),
+    tokenExpiresAt: new Date(Date.now() + Number(refreshed.expires_in || 3600) * 1000),
+  };
+  if (refreshed.refresh_token) update.refreshToken = encryptToken(refreshed.refresh_token);
+  await database.collection("deriv_sessions").updateOne({ _id: session._id }, { $set: update });
+  return refreshed.access_token;
 }
 export const handler = async (event) => {
   const sessionId = cookieValue(event.headers?.cookie || event.headers?.Cookie);
@@ -68,7 +103,7 @@ export const handler = async (event) => {
       if (!session.accounts?.some((account) => account.account_id === accountId)) {
         return response(403, { ok: false, error: "That account is not part of this Deriv session." });
       }
-      const accessToken = decryptToken(session.token);
+      const accessToken = await getUsableAccessToken(database, session);
       const apiBase = process.env.NEXT_PUBLIC_DERIV_ENV === "preview" || process.env.NEXT_PUBLIC_DERIV_ENV === "staging"
         ? "https://staging-api.derivws.com/trading/v1/options" : "https://api.derivws.com/trading/v1/options";
       const otpResponse = await fetch(`${apiBase}/accounts/${encodeURIComponent(accountId)}/otp`, {
