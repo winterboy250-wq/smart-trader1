@@ -35,7 +35,8 @@ export const handler = async (event) => {
   if (event.httpMethod !== "POST") return reply(405, { error: "Method not allowed" }, { Allow: "POST" });
   let input;
   try { input = JSON.parse(event.body || "{}"); } catch { return reply(400, { error: "Invalid request" }); }
-  if (!/^[A-Za-z0-9_-]{20,200}$/.test(input.code || "") || !/^[A-Za-z0-9_-]{20,200}$/.test(input.state || "")) {
+  if (typeof input.code !== "string" || input.code.length < 1 || input.code.length > 2048 ||
+      typeof input.state !== "string" || !/^[A-Za-z0-9_-]{30,100}$/.test(input.state)) {
     return reply(400, { error: "Missing or invalid OAuth code/state" });
   }
   const sessionId = cookieValue(event.headers?.cookie || event.headers?.Cookie);
