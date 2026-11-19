@@ -65,6 +65,13 @@ async function getUsableAccessToken(database, session) {
   return refreshed.access_token;
 }
 export const handler = async (event) => {
+  if (event.httpMethod === "POST") {
+    const requestOrigin = event.headers?.origin;
+    const requestHost = event.headers?.host;
+    if (!requestOrigin || !requestHost || requestOrigin !== `https://${requestHost}`) {
+      return response(403, { ok: false, error: "Cross-origin session request rejected." });
+    }
+  }
   const sessionId = cookieValue(event.headers?.cookie || event.headers?.Cookie);
   if (!sessionId) return response(401, { ok: false, authenticated: false, error: "No secure Deriv session. Connect Deriv first." });
   if (!process.env.SESSION_SECRET) return response(503, { ok: false, error: "SESSION_SECRET is not configured." });
