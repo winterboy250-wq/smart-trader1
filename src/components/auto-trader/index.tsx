@@ -77,6 +77,7 @@ export default function AutoTrader() {
     const stopBot = (reason = 'Bot stopped by user') => {
         runningRef.current = false;
         setRunning(false);
+        pending.current = false;
         setStatus(reason);
         stopRequested.current = Boolean(contractId.current);
         try {
@@ -106,6 +107,7 @@ export default function AutoTrader() {
             ws.onopen = () => {
                 setConnected(true); setStatus('Connected — waiting for live prices');
                 send({ balance: 1, subscribe: 1 });
+                send({ ticks_history: configRef.current.symbol, count: 100, end: 'latest', style: 'ticks' });
                 send({ ticks: configRef.current.symbol, subscribe: 1 });
             };
             ws.onmessage = event => {
@@ -118,6 +120,10 @@ export default function AutoTrader() {
                 if (message.msg_type === 'balance') {
                     setBalance(Number(message.balance.balance));
                     setCurrency(message.balance.currency || 'USD');
+                }
+                if (message.msg_type === 'history' && message.history?.prices) {
+                    prices.current = message.history.prices.map(Number).filter(Number.isFinite).slice(-80);
+                    setStatus('Market history loaded — listening for live ticks');
                 }
                 if (message.msg_type === 'tick') {
                     const quote = Number(message.tick.quote);
