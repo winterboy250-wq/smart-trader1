@@ -28,6 +28,8 @@ export default function AutoTrader() {
     const pending = useRef(false);
     const runningRef = useRef(false);
     const contractId = useRef<number | null>(null);
+    const previousSpread = useRef<number | null>(null);
+    const stopRequested = useRef(false);
     const lastTradeAt = useRef(0);
     const reqCounter = useRef(100);
     const configRef = useRef(DEFAULTS);
@@ -59,7 +61,8 @@ export default function AutoTrader() {
                 if (!response.ok || !data.authenticated) throw new Error(data.error || 'Connect Deriv first.');
                 setAccounts(data.accounts || []);
                 const first = (data.accounts || [])[0];
-                if (first) { setAccountId(first.account_id); setCurrency(first.currency || 'USD'); setBalance(Number(first.balance)); }
+                if (first) { setAccountId(first.account_id); setCurrency(first.currency || 'USD');
+                    const initialBalance = Number(first.balance); setBalance(Number.isFinite(initialBalance) ? initialBalance : null); }
                 setStatus('Deriv account authorised');
             })
             .catch(() => setStatus('Connect Deriv from the main dashboard first'));
@@ -75,9 +78,10 @@ export default function AutoTrader() {
         runningRef.current = false;
         setRunning(false);
         setStatus(reason);
+        stopRequested.current = Boolean(contractId.current);
         try {
             if (contractId.current && socket.current?.readyState === WebSocket.OPEN) {
-                send({ proposal_open_contract: 1, contract_id: contractId.current });
+                send({ proposal_open_contract: 1, contract_id: contractId.current, subscribe: 1 });
             }
             if (socket.current?.readyState === WebSocket.OPEN) send({ forget_all: 'ticks' });
         } catch { /* the connection may already be closed */ }
@@ -96,6 +100,7 @@ export default function AutoTrader() {
             const data = await response.json();
             if (!response.ok || !data.websocketUrl) throw new Error(data.error || 'Could not create an authenticated connection.');
             socket.current?.close();
+            prices.current = []; previousSpread.current = null;
             const ws = new WebSocket(data.websocketUrl);
             socket.current = ws;
             ws.onopen = () => {
@@ -122,7 +127,11 @@ export default function AutoTrader() {
                     const fast = ema(prices.current, 9), slow = ema(prices.current, 21), momentum = rsi(prices.current, 14);
                     if (fast === null || slow === null || momentum === null) { setStatus('Collecting market data…'); return; }
                     setIndicators({ emaFast: fast, emaSlow: slow, rsi: momentum });
-                    const direction = fast > slow && momentum >= 55 ? 'CALL' : fast < slow && momentum <= 45 ? 'PUT' : 'WAIT';
+                    const spread = fast - slow;
+                    const crossedUp = previousSpread.current !== null && previousSpread.current <= 0 && spread > 0;
+                    const crossedDown = previousSpread.current !== null && previousSpread.current >= 0 && spread < 0;
+                    previousSpread.current = spread;
+                    const direction = crossedUp && momentum >= 55 ? 'CALL' : crossedDown && momentum <= 45 ? 'PUT' : 'WAIT';
                     setSignal(direction);
                     if (runningRef.current && direction !== 'WAIT' && !pending.current && !contractId.current) {
                         const current = configRef.current;
@@ -156,6 +165,10 @@ export default function AutoTrader() {
                 }
                 if (message.msg_type === 'proposal_open_contract' && message.proposal_open_contract) {
                     const contract = message.proposal_open_contract;
+                    if (stopRequested.current && contract.is_valid_to_sell && !contract.is_sold) {
+                        send({ sell: Number(contract.contract_id), price: 0 });
+                        stopRequested.current = false;
+                    }
                     if (contract.is_sold || contract.is_expired || contract.status === 'won' || contract.status === 'lost') {
                         const result = Number(contract.profit || 0);
                         statsRef.current.profit += result;
@@ -164,6 +177,7 @@ export default function AutoTrader() {
                         setProfit(statsRef.current.profit);
                         setTrades(old => old.map(trade => trade.id === Number(contract.contract_id) ? { ...trade, profit: result, status: result >= 0 ? 'WON' : 'LOST' } : trade));
                         contractId.current = null;
+                        stopRequested.current = false;
                         setStatus(result >= 0 ? 'Trade settled — profit' : 'Trade settled — loss');
                     }
                 }
@@ -210,7 +224,7 @@ export default function AutoTrader() {
                     <label>Deriv account<select value={accountId} onChange={e => setAccountId(e.target.value)}>
                         <option value="">Select account</option>{accounts.map(account => <option key={account.account_id} value={account.account_id}>{account.account_id} · {account.account_type || 'Account'} · {account.currency}</option>)}
                     </select></label>
-                    <label>Market symbol<input value={config.symbol} onChange={e => setConfig({ ...config, symbol: e.target.value.toUpperCase() })} /></label>
+                    <label>Market symbol<input value={config.symbol} onChange={e => setConfig({ ...config, symbol: e.target.value.toUpperCase() })} disabled={connected} /></label>
                     <div className="auto-trader__actions"><button onClick={connect} disabled={connected}>{connected ? 'Connected' : 'Connect account'}</button><button className="secondary" onClick={disconnect} disabled={!connected}>Disconnect</button></div>
                     <p className="auto-trader__status">{status}</p>
                 </section>
