@@ -33,6 +33,11 @@ function encryptToken(token) {
 
 export const handler = async (event) => {
   if (event.httpMethod !== "POST") return reply(405, { error: "Method not allowed" }, { Allow: "POST" });
+  const requestOrigin = event.headers?.origin;
+  const requestHost = event.headers?.host;
+  if (!requestOrigin || !requestHost || requestOrigin !== `https://${requestHost}`) {
+    return reply(403, { error: "Cross-origin OAuth callback rejected" });
+  }
   let input;
   try { input = JSON.parse(event.body || "{}"); } catch { return reply(400, { error: "Invalid request" }); }
   if (typeof input.code !== "string" || input.code.length < 1 || input.code.length > 2048 ||
