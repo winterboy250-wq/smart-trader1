@@ -9,6 +9,12 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Server-side API routes must be declared before the SPA fallback.
+[[redirects]]
+  from = "/api/deriv/session"
+  to = "/.netlify/functions/deriv-session"
+  status = 200
+
 # React Router is a client-side SPA. Keep this fallback after real assets/routes.
 [[redirects]]
   from = "/*"
