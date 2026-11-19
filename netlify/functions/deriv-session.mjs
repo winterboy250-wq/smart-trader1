@@ -2,10 +2,9 @@ import { MongoClient } from "mongodb";
 
 const COOKIE_NAME = "st_oauth_session";
 const DB_NAME = process.env.MONGODB_DB_NAME || "smart_trader";
-
 let cachedClientPromise;
 
-function json(statusCode, body, extraHeaders = {}) {
+function response(statusCode, body, headers = {}) {
   return {
     statusCode,
     headers: {
@@ -13,17 +12,14 @@ function json(statusCode, body, extraHeaders = {}) {
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      ...extraHeaders,
+      ...headers,
     },
     body: JSON.stringify(body),
   };
 }
 
-function getMongoClient() {
-  if (!process.env.MONGODB_URI) {
-    throw new Error("MONGODB_URI is not configured");
-  }
-
+async function getMongoClient() {
+  if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is not configured");
   if (!cachedClientPromise) {
     const client = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
@@ -35,41 +31,36 @@ function getMongoClient() {
       throw error;
     });
   }
-
   return cachedClientPromise;
 }
 
-function readCookie(cookieHeader, name) {
-  const cookies = (cookieHeader || "").split(";");
-  for (const part of cookies) {
-    const separator = part.indexOf("=");
-    if (separator < 0) continue;
-    if (part.slice(0, separator).trim() === name) {
-      return decodeURIComponent(part.slice(separator + 1).trim());
+function cookieValue(header, name) {
+  for (const item of (header || "").split(";")) {
+    const index = item.indexOf("=");
+    if (index < 0) continue;
+    if (item.slice(0, index).trim() === name) {
+      return item.slice(index + 1).trim();
     }
   }
   return null;
 }
 
-export default async (request) => {
-  const method = request.httpMethod || request.method;
-  if (method !== "GET" && method !== "POST") {
-    return json(405, { ok: false, error: "Method not allowed" }, { Allow: "GET, POST" });
-  }
+export const handler = async (event) => {
+  const method = event.httpMethod;
 
   if (method === "POST") {
-    let payload = {};
+    let payload;
     try {
-      payload = JSON.parse(request.body || "{}");
+      payload = JSON.parse(event.body || "{}");
     } catch {
-      return json(400, { ok: false, error: "Invalid JSON body" });
+      return response(400, { ok: false, error: "Invalid JSON body" });
     }
 
     if (payload.action !== "logout") {
-      return json(400, { ok: false, error: "Unsupported action" });
+      return response(400, { ok: false, error: "Unsupported action" });
     }
 
-    return json(
+    return response(
       200,
       { ok: true, authenticated: false },
       {
@@ -78,30 +69,31 @@ export default async (request) => {
     );
   }
 
-  const sessionCookie = readCookie(
-    request.headers?.cookie || request.headers?.Cookie,
-    COOKIE_NAME
-  );
+  if (method !== "GET") {
+    return response(405, { ok: false, error: "Method not allowed" }, { Allow: "GET, POST" });
+  }
+
+  const sessionCookie = cookieValue(event.headers?.cookie || event.headers?.Cookie, COOKIE_NAME);
 
   try {
     const client = await getMongoClient();
     await client.db(DB_NAME).command({ ping: 1 });
 
-    // This initial endpoint deliberately does not accept access tokens from the
-    // browser. OAuth callback/session creation is added in the next backend step.
-    return json(200, {
+    // Readiness only: no OAuth token is accepted from the browser and no
+    // authenticated Deriv session is created by this endpoint yet.
+    return response(200, {
       ok: true,
       database: "connected",
-      sessionConfigured: Boolean(process.env.SESSION_SECRET),
+      sessionSecretConfigured: Boolean(process.env.SESSION_SECRET),
       authenticated: false,
-      sessionPresent: Boolean(sessionCookie),
+      sessionCookiePresent: Boolean(sessionCookie),
       derivConnected: false,
     });
   } catch {
-    return json(503, {
+    return response(503, {
       ok: false,
       database: "unavailable",
-      sessionConfigured: Boolean(process.env.SESSION_SECRET),
+      sessionSecretConfigured: Boolean(process.env.SESSION_SECRET),
       authenticated: false,
       error: "Backend database is not ready. Check Netlify environment variables and MongoDB network access.",
     });
