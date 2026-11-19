@@ -82,8 +82,10 @@ export const getSocketURL = async (): Promise<string> => {
         }
         return result.websocketUrl;
     } catch (error) {
-        console.error('[DerivWS] Error in getSocketURL:', error);
-        return getDefaultServerURL();
+        console.error('[DerivWS] Secure Deriv authorization failed:', error);
+        // Fail closed when an account is selected: never silently downgrade an
+        // authenticated account connection to the public, unauthenticated socket.
+        throw error instanceof Error ? error : new Error('Secure Deriv connection failed. Please reconnect.');
     }
 };
 
