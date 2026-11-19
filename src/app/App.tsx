@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import React from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router';
-import { cleanupUrl, handleOAuthCallback } from '@/external/deriv-core';
+import { cleanupUrl } from '@/external/deriv-core';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import LocalStorageSyncWrapper from '@/components/localStorage-sync-wrapper';
 import RoutePromptDialog from '@/components/route-prompt-dialog';
@@ -16,6 +16,7 @@ import './app-root.scss';
 
 const Layout = lazy(() => import('../components/layout'));
 const AppRoot = lazy(() => import('./app-root'));
+const AutoTrader = lazy(() => import('../components/auto-trader'));
 
 /**
  * Component wrapper to handle language URL parameter
@@ -58,6 +59,7 @@ const router = createBrowserRouter(
             <Route index element={<AppRoot />} />
             {/* App Builder embeds the template at /preview — render the same app shell */}
             <Route path='preview' element={<AppRoot />} />
+            <Route path='autotrader' element={<AutoTrader />} />
         </Route>
     ),
     { basename: routerBasename }
@@ -67,7 +69,7 @@ const router = createBrowserRouter(
  * Main App component
  *
  * Responsibilities:
- * 1. OAuth callback handling (via vendored deriv-core handleOAuthCallback)
+ * 1. OAuth callback handling (via secure Netlify backend)
  * 2. Account switching from URL (via useAccountSwitching hook)
  * 3. Router provider setup
  */
@@ -81,21 +83,35 @@ function App() {
 
         const handleCallback = async () => {
             try {
-                const authInfo = await handleOAuthCallback(window.location.href, {
-                    clientId: process.env.NEXT_PUBLIC_DERIV_APP_ID || '',
-                    redirectUri: window.location.origin,
-                    scopes: 'trade',
+                const state = urlParams.get('state');
+                if (!state) throw new Error('Deriv callback is missing its security state. Please reconnect.');
+
+                const response = await fetch('/api/deriv/oauth/callback', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: urlParams.get('code'), state }),
                 });
+                const result = await response.json();
+                if (!response.ok || !result.authenticated) {
+                    throw new Error(result.error || 'Secure Deriv sign-in failed.');
+                }
 
                 const { DerivWSAccountsService } = await import('@/services/derivws-accounts.service');
-                const accounts = await DerivWSAccountsService.fetchAccountsList(authInfo.access_token);
+                const accounts = result.accounts || [];
 
-                if (accounts && accounts.length > 0) {
+                if (accounts.length > 0) {
                     DerivWSAccountsService.storeAccounts(accounts);
+                    localStorage.removeItem('auth_info');
+                    localStorage.removeItem('authToken');
                     const firstAccount = accounts[0];
                     localStorage.setItem('active_loginid', firstAccount.account_id);
-                    const isDemo =
-                        firstAccount.account_id.startsWith('VRT') || firstAccount.account_id.startsWith('VRTC');
+                    // The Options API supplies the authoritative account_type.
+                    // Legacy VRT/VRTC prefixes are only a fallback for older account records.
+                    const accountType = firstAccount.account_type?.toLowerCase();
+                    const isDemo = accountType
+                        ? accountType === 'demo'
+                        : /^(VRT|VRTC)/.test(firstAccount.account_id);
                     localStorage.setItem('account_type', isDemo ? 'demo' : 'real');
 
                     const { api_base } = await import('@/external/bot-skeleton');

@@ -1,0 +1,30 @@
+name: Smart Trader CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "upgrade/secure-deriv-backend"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Type check
+        run: npm run type-check
+      - name: Build
+        run: npm run build
+      - name: Test Auto Trader strategy
+        run: npm test -- --runInBand src/components/auto-trader/strategy.test.ts

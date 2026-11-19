@@ -13,7 +13,14 @@ export const useLogout = () => {
 
     return useCallback(async () => {
         try {
-            // Call the client store logout method which clears all storage
+            // Revoke the server-side session and expire the HttpOnly cookie first.
+            await fetch('/api/deriv/session', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'logout' }),
+            });
+            // Then reset the client store and local UI state.
             await client?.logout();
             // Analytics.reset() removed - Analytics package has been removed from the project
             // See migrate-docs/MONITORING_PACKAGES.md for re-enabling analytics if needed
