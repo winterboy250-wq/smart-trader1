@@ -77,9 +77,12 @@ export default function AutoTrader() {
     const stopBot = (reason = 'Bot stopped by user') => {
         runningRef.current = false;
         setRunning(false);
+        const orderWasInFlight = pending.current;
         pending.current = false;
         setStatus(reason);
-        stopRequested.current = Boolean(contractId.current);
+        // If BUY was already sent, its response can arrive after Stop All.
+        // Keep the stop request armed so the late contract is sold as soon as possible.
+        stopRequested.current = Boolean(contractId.current) || orderWasInFlight;
         try {
             if (contractId.current && socket.current?.readyState === WebSocket.OPEN) {
                 send({ proposal_open_contract: 1, contract_id: contractId.current, subscribe: 1 });
@@ -199,6 +202,8 @@ export default function AutoTrader() {
         if (!connected) { setError('Connect to Deriv before starting.'); return; }
         if (!isDemo) { setError('Automated execution is currently restricted to demo accounts while this feature is being tested.'); return; }
         if (!confirmed) { setError('Confirm that you understand this bot can place demo trades automatically.'); return; }
+        if (contractId.current || pending.current) { setError('Wait for the previous trade request or open contract to finish before restarting.'); return; }
+        stopRequested.current = false;
         if (config.stake <= 0 || config.stake > 10 || config.maxDailyLoss <= 0 || config.duration < 1) {
             setError('Use a stake above zero and no more than 10, a positive daily loss limit, and a valid duration.'); return;
         }
