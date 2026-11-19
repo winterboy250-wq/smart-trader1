@@ -254,7 +254,9 @@ export default function TradingBot() {
     setStatus("Bot running");
   }
 
-  function stopBot() {
+  function stopBot(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
     if (!ws.current || !runId) return;
 
     ws.current.send(
@@ -266,6 +268,7 @@ export default function TradingBot() {
     );
 
     setRunning(false);
+    setRunId(null);
     setStatus("Bot stopped");
   }
 
@@ -335,7 +338,7 @@ export default function TradingBot() {
             }
           />
 
-          <button
+          <button type="button"
             className="connect"
             onClick={connect}
           >
@@ -433,7 +436,7 @@ export default function TradingBot() {
           </div>
 
           {!running && !runId && (
-            <button
+            <button type="button"
               className="start"
               onClick={startBot}
             >
@@ -442,7 +445,7 @@ export default function TradingBot() {
           )}
 
           {running && (
-            <button
+            <button type="button"
               className="pause"
               onClick={pauseBot}
             >
@@ -451,7 +454,7 @@ export default function TradingBot() {
           )}
 
           {!running && runId && (
-            <button
+            <button type="button"
               className="resume"
               onClick={resumeBot}
             >
@@ -460,7 +463,7 @@ export default function TradingBot() {
           )}
 
           {runId && (
-            <button
+            <button type="button"
               className="stop"
               onClick={stopBot}
             >
