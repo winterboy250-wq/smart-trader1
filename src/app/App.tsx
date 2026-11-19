@@ -106,8 +106,12 @@ function App() {
                     localStorage.removeItem('authToken');
                     const firstAccount = accounts[0];
                     localStorage.setItem('active_loginid', firstAccount.account_id);
-                    const isDemo =
-                        firstAccount.account_id.startsWith('VRT') || firstAccount.account_id.startsWith('VRTC');
+                    // The Options API supplies the authoritative account_type.
+                    // Legacy VRT/VRTC prefixes are only a fallback for older account records.
+                    const accountType = firstAccount.account_type?.toLowerCase();
+                    const isDemo = accountType
+                        ? accountType === 'demo'
+                        : /^(VRT|VRTC)/.test(firstAccount.account_id);
                     localStorage.setItem('account_type', isDemo ? 'demo' : 'real');
 
                     const { api_base } = await import('@/external/bot-skeleton');
