@@ -1,27 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './auto-trader.scss';
+import { calculateEma as ema, calculateRsi as rsi, getCrossoverSignal } from './strategy';
 
 type Account = { account_id: string; account_type?: string; currency: string; balance?: string | number; status?: string };
 type Trade = { id: number; direction: string; stake: number; profit?: number; status: string; time: string };
 
 const DEFAULTS = { symbol: '1HZ100V', stake: 1, duration: 5, maxTrades: 10, maxDailyLoss: 5, maxConsecutiveLosses: 3, cooldownSeconds: 30 };
-const ema = (values: number[], period: number) => {
-    if (values.length < period) return null;
-    const multiplier = 2 / (period + 1);
-    return values.slice(1).reduce((value, price) => value + (price - value) * multiplier, values[0]);
-};
-const rsi = (values: number[], period = 14) => {
-    if (values.length <= period) return null;
-    let gains = 0, losses = 0;
-    for (let i = values.length - period; i < values.length; i++) {
-        const change = values[i] - values[i - 1];
-        if (change > 0) gains += change; else losses -= change;
-    }
-    if (losses === 0) return 100;
-    const rs = (gains / period) / (losses / period);
-    return 100 - 100 / (1 + rs);
-};
-
 export default function AutoTrader() {
     const socket = useRef<WebSocket | null>(null);
     const prices = useRef<number[]>([]);
@@ -139,10 +123,8 @@ export default function AutoTrader() {
                     if (fast === null || slow === null || momentum === null) { setStatus('Collecting market data…'); return; }
                     setIndicators({ emaFast: fast, emaSlow: slow, rsi: momentum });
                     const spread = fast - slow;
-                    const crossedUp = previousSpread.current !== null && previousSpread.current <= 0 && spread > 0;
-                    const crossedDown = previousSpread.current !== null && previousSpread.current >= 0 && spread < 0;
+                    const direction = getCrossoverSignal(previousSpread.current, spread, momentum);
                     previousSpread.current = spread;
-                    const direction = crossedUp && momentum >= 55 ? 'CALL' : crossedDown && momentum <= 45 ? 'PUT' : 'WAIT';
                     setSignal(direction);
                     if (runningRef.current && direction !== 'WAIT' && !pending.current && !contractId.current) {
                         const current = configRef.current;
@@ -200,7 +182,10 @@ export default function AutoTrader() {
 
     const startBot = () => {
         const account = accounts.find(item => item.account_id === accountId);
-        const isDemo = account?.account_type?.toLowerCase() === 'demo' || /^(VRT|VRTC)/.test(accountId);
+        const declaredAccountType = account?.account_type?.toLowerCase();
+        const isDemo = declaredAccountType
+            ? declaredAccountType === 'demo'
+            : /^(VRT|VRTC)/.test(accountId);
         if (!connected) { setError('Connect to Deriv before starting.'); return; }
         if (connectedAccountId.current !== accountId) { setError('The selected account is not the account currently connected. Disconnect and reconnect to the correct account.'); return; }
         if (!isDemo) { setError('Automated execution is currently restricted to demo accounts while this feature is being tested.'); return; }
