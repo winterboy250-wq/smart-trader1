@@ -38,6 +38,15 @@ export const handler = async (event) => {
     const client = await getMongoClient();
     const database = client.db(DB_NAME);
     const sessions = database.collection("deriv_sessions");
+    if (event.httpMethod === "POST") {
+      let payload;
+      try { payload = JSON.parse(event.body || "{}"); } catch { return response(400, { ok: false, error: "Invalid JSON body" }); }
+      if (payload.action === "logout") {
+        await sessions.deleteOne({ _id: sessionId });
+        return response(200, { ok: true, authenticated: false }, { "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` });
+      }
+    }
+
     const session = await sessions.findOne({ _id: sessionId, expiresAt: { $gt: new Date() } });
     if (!session) return response(401, { ok: false, authenticated: false, error: "Deriv session expired. Please reconnect." });
 
