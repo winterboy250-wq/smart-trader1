@@ -5,7 +5,8 @@ function getEnv(): DerivEnv {
   // rsbuild's `source.define`. Do NOT guard on `typeof process` — the bare
   // `process` identifier is not defined, so it is `'undefined'` in the browser
   // and would short-circuit this to the production fallback even on staging.
-  return process.env.NEXT_PUBLIC_DERIV_ENV === 'preview' ? 'preview' : 'production';
+  const env = process.env.NEXT_PUBLIC_DERIV_ENV;
+  return env === 'preview' || env === 'staging' ? 'preview' : 'production';
 }
 
 const URLS = {
