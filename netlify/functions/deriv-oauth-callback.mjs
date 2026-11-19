@@ -84,7 +84,6 @@ export const handler = async (event) => {
     const sessionRecord = {
       _id: sessionId,
       token: encryptToken(tokenData.access_token),
-      refreshToken: tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : null,
       tokenExpiresAt: new Date(Date.now() + Number(tokenData.expires_in || 3600) * 1000),
       scope: tokenData.scope || "",
       accounts: accounts.map(({ account_id, account_type, currency, balance, group, status }) => ({
