@@ -100,6 +100,8 @@ function App() {
 
                 if (accounts.length > 0) {
                     DerivWSAccountsService.storeAccounts(accounts);
+                    localStorage.removeItem('auth_info');
+                    localStorage.removeItem('authToken');
                     const firstAccount = accounts[0];
                     localStorage.setItem('active_loginid', firstAccount.account_id);
                     const isDemo =
