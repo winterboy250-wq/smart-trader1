@@ -3,7 +3,6 @@ import {
     parseLandingParams,
     resolveReferralViaProxy,
 } from '@/external/deriv-core';
-import { DerivWSAccountsService } from '@/services/derivws-accounts.service';
 import brandConfig from '../../../../../brand.config.json';
 
 // =============================================================================
@@ -140,7 +139,7 @@ export const generateOAuthURL = async (prompt?: string): Promise<string> => {
 
         // If we still have no token and the referral link is a Scaleo click link,
         // resolve a fresh per-user token via the BFF proxy (non-blocking).
-        if (!config.affiliateToken && referralLink) {
+        if (!['t', 'affiliate_token', 'sidi', 'ca'].some(key => config[key]) && referralLink) {
             const resolved = await resolveReferralViaProxy(referralLink);
             if (resolved) {
                 config[resolved.affiliateTokenParam || 't'] = resolved.affiliateToken;
