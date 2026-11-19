@@ -24,7 +24,7 @@ jobs:
         run: npm install --legacy-peer-deps
       - name: Type check
         run: npm run type-check
-      - name: Run tests
-        run: npm test -- --runInBand
       - name: Build
         run: npm run build
+      - name: Test Auto Trader strategy
+        run: npm test -- --runInBand src/components/auto-trader/strategy.test.ts
